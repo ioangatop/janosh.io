@@ -1,21 +1,41 @@
-import { useLocalStorage, useMediaQuery } from '.'
+import { useLocalStorage } from 'hooks'
+import { useEffect } from 'react'
+import {
+  COLOR_MODE_KEY,
+  INITIAL_COLOR_MODE_CSS_PROP,
+  MODE_COLORS,
+} from 'utils/constants'
 
-export const useDarkMode = (initialValue = `noPreference`) => {
-  const [colorMode, setColorMode] = useLocalStorage(`colorMode`, initialValue)
-  const setter = value => {
-    // Add color and background transition to body here to prevent
-    // flashing from light to dark on initial page load.
-    document.body.style.transition = `color 0.5s, background 0.5s`
-    setColorMode(value)
+export const useDarkMode = () => {
+  const [colorMode, setLSColorMode] = useLocalStorage(COLOR_MODE_KEY)
+
+  // Place useDarkMode initialization in useEffect to exclude it from SSR.
+  // The code inside will run on the client after React rehydration.
+  // Because colors matter a lot for the initial page view, we're not
+  // setting them here but in gatsby-ssr. That way it happens before
+  // the React component tree mounts.
+  useEffect(() => {
+    const initialColorMode = document.body.style.getPropertyValue(
+      INITIAL_COLOR_MODE_CSS_PROP
+    )
+    setLSColorMode(initialColorMode)
+    // https://stackoverflow.com/a/61735300
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function setColorMode(newValue) {
+    // localStorage.setItem(COLOR_MODE_KEY, newValue)
+    setLSColorMode(newValue)
+
+    if (newValue === `osPref`) {
+      const mql = window.matchMedia(`(prefers-color-scheme: dark)`)
+      const prefersDarkFromMQ = mql.matches
+      newValue = prefersDarkFromMQ ? `dark` : `light`
+    }
+
+    for (const [name, colorByMode] of Object.entries(MODE_COLORS))
+      document.body.style.setProperty(`--color-${name}`, colorByMode[newValue])
   }
 
-  // Check if the user has an OS preference for dark mode.
-  const prefersDarkMode = useMediaQuery(`(prefers-color-scheme: dark)`)
-
-  // Dark mode is enabled if toggled by the user or if the media query
-  // `prefers-color-scheme: dark` is true _and_ the user did not
-  // explicitly set a light theme.
-  const darkModeEnabled =
-    colorMode === `dark` || (prefersDarkMode && colorMode !== `light`)
-  return [darkModeEnabled, colorMode, setter]
+  return [colorMode, setColorMode]
 }
